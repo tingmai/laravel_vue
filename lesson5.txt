@@ -1,0 +1,1007 @@
+Laravel API with Passport authentication, including login and registration,
+ and product CRUD endpoints. 
+ frontend with login, registration, and product CRUD pages, 
+==========================================================================
+
+Backend: Laravel API with Passport Authentication
+
+////////////////////////////////////////////////////////////////////
+1. Install Laravel and Passport
+///////////////////////////////////////////////////////////////////
+
+=> First, create a new Laravel project and install Passport:
+
+
+
+composer create-project --prefer-dist laravel/laravel product-api
+cd product-api
+composer require laravel/passport
+
+
+//////////////////////////////////////////////////////////////////
+2. Configure Passport
+/////////////////////////////////////////////////////////////////
+
+
+=> Run the Passport installation command:
+
+
+[command]:
+php artisan passport:install
+In your App\Models\User model, add the HasApiTokens trait:
+
+
+[code]:
+use Laravel\Passport\HasApiTokens;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, Notifiable;
+}
+
+
+
+=> In AuthServiceProvider, register the Passport routes within the boot method:
+
+
+use Laravel\Passport\Passport;
+
+public function boot()
+{
+    $this->registerPolicies();
+    Passport::routes();
+}
+
+
+=> Update your config/auth.php to use Passport's token driver for API authentication:
+
+
+'guards' => [
+    'api' => [
+        'driver' => 'passport',
+        'provider' => 'users',
+    ],
+],
+
+
+///////////////////////////////////////////////////////
+3. Migrate the Database
+///////////////////////////////////////////////////////
+
+
+=> Configure your database in the .env file and run the migrations:
+
+
+[command]:
+php artisan migrate
+
+///////////////////////////////////////////////////////////
+4. Create Authentication Controllers
+///////////////////////////////////////////////////////////
+
+=> Generate the authentication controllers:
+
+
+[command]:
+php artisan make:controller Auth/RegisterController
+php artisan make:controller Auth/LoginController
+
+
+=> Implement the registration in RegisterController:
+
+
+
+[code]:
+namespace App\Http\Controllers\Auth;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+
+class RegisterController extends Controller
+{
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('Personal Access Token')->accessToken;
+
+        return response()->json(['token' => $token], 201);
+    }
+}
+
+
+
+=> Implement the login in LoginController:
+
+
+[code]:
+namespace App\Http\Controllers\Auth;
+
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+
+class LoginController extends Controller
+{
+    public function login(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email',
+            'password' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if (!Auth::attempt($request->only('email', 'password'))) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $user = $request->user();
+        $token = $user->createToken('Personal Access Token')->accessToken;
+
+        return response()->json(['token' => $token], 200);
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////
+5. Define Authentication Routes
+//////////////////////////////////////////////////////////////////
+
+
+=> In routes/api.php, add the routes for authentication:
+
+
+use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\LoginController;
+
+Route::post('register', [RegisterController::class, 'register']);
+Route::post('login', [LoginController::class, 'login']);
+
+
+//////////////////////////////////////////////////////////////////
+6. Create Product CRUD API
+/////////////////////////////////////////////////////////////////
+
+
+=> Generate the Product model, migration, and controller:
+
+[command]:
+php artisan make:model Product -m
+php artisan make:controller ProductController --api
+
+
+=> Modify the migration file database/migrations/xxxx_xx_xx_create_products_table.php:
+
+[code]:
+public function up()
+{
+    Schema::create('products', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->text('description')->nullable();
+        $table->decimal('price', 8, 2);
+        $table->integer('quantity');
+        $table->timestamps();
+    });
+}
+
+
+=> Run the migration:
+
+
+[command]:
+php artisan migrate
+
+
+=> In routes/api.php, define the routes for the Product CRUD:
+
+[code]:
+use App\Http\Controllers\ProductController;
+
+Route::middleware('auth:api')->group(function () {
+    Route::apiResource('products', ProductController::class);
+});
+
+
+
+=> Implement the controller methods in app/Http/Controllers/ProductController.php:
+
+[code]:
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use Illuminate\Http\Request;
+
+class ProductController extends Controller
+{
+    public function index()
+    {
+        return Product::all();
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        return Product::create($request->all());
+    }
+
+    public function show($id)
+    {
+        return Product::findOrFail($id);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        $product = Product::findOrFail($id);
+        $product->update($request->all());
+
+        return $product;
+    }
+
+    public function destroy($id)
+    {
+        $product = Product::findOrFail($id);
+        $product->delete();
+
+        return response()->noContent();
+    }
+}
+
+
+///////////////////////////////////////////////////////////
+Testing Outputs
+//////////////////////////////////////////////////////////
+
+To test the API endpoints, use tools like Postman or Insomnia.
+ Here are example requests and responses:
+
+///////////////////////////////////////////////////////////
+Registration
+///////////////////////////////////////////////////////////
+
+=> Request:
+
+
+POST http://localhost:8000/api/register
+Headers:
+"Content-Type: application/json" 
+{"name":"Mg Mg","email":"mgmg@example.com","password":"password","password_confirmation":"password"}'
+
+
+=> Response:
+
+
+{
+    "token": "your_personal_access_token"
+}
+
+//////////////////////////////////////////
+Login
+///////////////////////////////////////////
+
+
+Request:
+
+
+POST http://localhost:8000/api/login 
+Headers:
+"Content-Type: application/json" 
+BOdy:
+{"email":"mgmg@example.com","password":"password"}
+
+
+Response:
+
+
+{
+    "token": "your_personal_access_token"
+}
+
+////////////////////////////////////////////////
+Get All Products
+/////////////////////////////////////////////////
+
+
+=> Request:
+
+
+GET http://localhost:8000/api/products 
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+=> Response:
+
+
+[
+    {
+        "id": 1,
+        "name": "Product A",
+        "description": "Description for Product A",
+        "price": 10.99,
+        "quantity": 100,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    },
+    {
+        "id": 2,
+        "name": "Product B",
+        "description": "Description for Product B",
+        "price": 15.99,
+        "quantity": 200,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    }
+]
+
+
+/////////////////////////////////////////////////////////////////
+Create a Product
+/////////////////////////////////////////////////////////////////
+
+=> Request:
+
+
+POST http://localhost:8000/api/products
+Headers:
+"Authorization: Bearer your_personal_access_token" 
+"Content-Type: application/json" 
+Body:
+{"name":"Product C","description":"Description for Product C","price":20.99,"quantity":150}
+
+
+=> Response:
+
+
+{
+    "id": 3,
+    "name": "Product C",
+    "description": "Description for Product C",
+    "price": 20.99,
+    "quantity": 150,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+
+
+////////////////////////////////////////////////////////////
+Get a Product by ID
+//////////////////////////////////////////////////////////////
+
+=> Request:
+
+
+GET http://localhost:8000/api/products/1
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+=> Response:
+
+-----------------------------------------------------
+{
+    "id": 1,
+    "name": "Product A",
+    "description": "Description for Product A",
+    "price": 10.99,
+    "quantity": 100,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+--------------------------------------------------------
+/////////////////////////////////////////////////////
+Update a Product
+///////////////////////////////////////////////////////
+
+=> Request:
+
+
+PUT http://localhost:8000/api/products/1
+Headers:
+"Authorization: Bearer your_personal_access_token" 
+"Content-Type: application/json" 
+Body:
+'{"name":"Updated Product A","description":"Updated Description for Product A","price":11.99,"quantity":110}'
+
+
+=> Response:
+
+-----------------------------------------------------------
+{
+    "id": 1,
+    "name": "Updated Product A",
+    "description": "Updated Description for Product A",
+    "price": 11.99,
+    "quantity": 110,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+-------------------------------------------------------------
+
+//////////////////////////////////////////////////////////
+Delete a Product
+//////////////////////////////////////////////////////////
+
+=> Request:
+
+
+DELETE http://localhost:8000/api/products/1 
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+
+=> Response:
+
+---------------------------------------------------------------
+{
+    "message": "Product deleted successfully"
+}
+----------------------------------------------------------------
+
+
+================================================================
+Frontend: Vue.js Application
+================================================================
+
+
+//////////////////////////////////////////////////////
+1. Create Vue.js Project
+///////////////////////////////////////////////////////
+
+
+=> Create a new Vue.js project using Vue CLI:
+
+
+[command]:
+vue create product-frontend
+cd product-frontend
+Install Vue Router and Vuex for routing and state management:
+
+
+[command]:
+npm install vue-router vuex axios
+
+
+//////////////////////////////////////////////////////////////
+2. Project Structure
+//////////////////////////////////////////////////////////////
+
+
+=> Your project structure should look like this:
+
+
+product-frontend/
+├── public/
+├── src/
+│   ├── assets/
+│   ├── components/
+│   │   ├── ProductList.vue
+│   │   ├── ProductForm.vue
+│   │   ├── Login.vue
+│   │   ├── Register.vue
+│   ├── router/
+│   │   └── index.js
+│   ├── store/
+│   │   └── index.js
+│   ├── views/
+│   │   ├── Home.vue
+│   │   ├── Products.vue
+│   │   ├── Login.vue
+│   │   ├── Register.vue
+│   ├── App.vue
+│   ├── main.js
+├── .env
+└── package.json
+
+
+
+///////////////////////////////////////////////////////////
+3. Configure Vue Router
+//////////////////////////////////////////////////////////
+
+
+=> In src/router/index.js:
+
+javascript
+Copy code
+import Vue from 'vue';
+import VueRouter from 'vue-router';
+import Home from '../views/Home.vue';
+import Products from '../views/Products.vue';
+import Login from '../views/Login.vue';
+import Register from '../views/Register.vue';
+
+Vue.use(VueRouter);
+
+const routes = [
+    { path: '/', name: 'Home', component: Home },
+    { path: '/products', name: 'Products', component: Products },
+    { path: '/login', name: 'Login', component: Login },
+    { path: '/register', name: 'Register', component: Register },
+];
+
+const router = new VueRouter({
+    mode: 'history',
+    base: process.env.BASE_URL,
+    routes,
+});
+
+export default router;
+
+/////////////////////////////////////////////////////////
+4. Configure Vuex Store
+/////////////////////////////////////////////////////////
+
+
+=> In src/store/index.js:
+
+javascript
+Copy code
+import Vue from 'vue';
+import Vuex from 'vuex';
+import axios from 'axios';
+
+Vue.use(Vuex);
+
+export default new Vuex.Store({
+    state: {
+        token: localStorage.getItem('token') || '',
+        products: [],
+    },
+    mutations: {
+        auth_success(state, token) {
+            state.token = token;
+        },
+        logout(state) {
+            state.token = '';
+        },
+        set_products(state, products) {
+            state.products = products;
+        },
+    },
+    actions: {
+        login({ commit }, user) {
+            return axios.post('http://localhost:8000/api/login', user)
+                .then(response => {
+                    const token = response.data.token;
+                    localStorage.setItem('token', token);
+                    axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
+                    commit('auth_success', token);
+                });
+        },
+        register({ commit }, user) {
+            return axios.post('http://localhost:8000/api/register', user)
+                .then(response => {
+                    const token = response.data.token;
+                    localStorage.setItem('token', token);
+                    axios.defaults.headers.common['Authorization'] = 'Bearer ' + token;
+                    commit('auth_success', token);
+                });
+        },
+        logout({ commit }) {
+            return new Promise((resolve) => {
+                commit('logout');
+                localStorage.removeItem('token');
+                delete axios.defaults.headers.common['Authorization'];
+                resolve();
+            });
+        },
+        getProducts({ commit }) {
+            return axios.get('http://localhost:8000/api/products')
+                .then(response => {
+                    commit('set_products', response.data);
+                });
+        },
+        addProduct({ dispatch }, product) {
+            return axios.post('http://localhost:8000/api/products', product)
+                .then(() => {
+                    dispatch('getProducts');
+                });
+        },
+        updateProduct({ dispatch }, product) {
+            return axios.put(`http://localhost:8000/api/products/${product.id}`, product)
+                .then(() => {
+                    dispatch('getProducts');
+                });
+        },
+        deleteProduct({ dispatch }, productId) {
+            return axios.delete(`http://localhost:8000/api/products/${productId}`)
+                .then(() => {
+                    dispatch('getProducts');
+                });
+        },
+    },
+    getters: {
+        isLoggedIn: state => !!state.token,
+        products: state => state.products,
+    },
+});
+
+
+/////////////////////////////////////////////////////////////
+5. Create Vue Components
+//////////////////////////////////////////////////////////////
+
+
+=> Create ProductList.vue, ProductForm.vue, Login.vue, and Register.vue components.
+
+In src/components/ProductList.vue:
+
+
+<template>
+    <div>
+        <h1>Products</h1>
+        <ul>
+            <li v-for="product in products" :key="product.id">
+                {{ product.name }} - {{ product.price }}
+                <button @click="editProduct(product)">Edit</button>
+                <button @click="deleteProduct(product.id)">Delete</button>
+            </li>
+        </ul>
+    </div>
+</template>
+
+<script>
+export default {
+    computed: {
+        products() {
+            return this.$store.getters.products;
+        }
+    },
+    methods: {
+        editProduct(product) {
+            this.$emit('edit-product', product);
+        },
+        deleteProduct(productId) {
+            this.$store.dispatch('deleteProduct', productId);
+        }
+    },
+    mounted() {
+        this.$store.dispatch('getProducts');
+    }
+}
+</script>
+
+
+
+=> In src/components/ProductForm.vue:
+
+
+<template>
+    <div>
+        <h1>{{ isEditing ? 'Edit Product' : 'Add Product' }}</h1>
+        <form @submit.prevent="submitForm">
+            <div>
+                <label>Name</label>
+                <input v-model="product.name" type="text" required>
+            </div>
+            <div>
+                <label>Description</label>
+                <textarea v-model="product.description"></textarea>
+            </div>
+            <div>
+                <label>Price</label>
+                <input v-model="product.price" type="number" step="0.01" required>
+            </div>
+            <div>
+                <label>Quantity</label>
+                <input v-model="product.quantity" type="number" required>
+            </div>
+            <button type="submit">{{ isEditing ? 'Update' : 'Add' }}</button>
+        </form>
+    </div>
+</template>
+
+<script>
+export default {
+    props: ['product'],
+    computed: {
+        isEditing() {
+            return !!this.product.id;
+        }
+    },
+    methods: {
+        submitForm() {
+            if (this.isEditing) {
+                this.$store.dispatch('updateProduct', this.product);
+            } else {
+                this.$store.dispatch('addProduct', this.product);
+            }
+            this.$emit('form-submitted');
+        }
+    }
+}
+</script>
+
+
+=> In src/components/Login.vue:
+
+
+
+
+<template>
+    <div>
+        <h1>Login</h1>
+        <form @submit.prevent="login">
+            <div>
+                <label>Email</label>
+                <input v-model="email" type="email" required>
+            </div>
+            <div>
+                <label>Password</label>
+                <input v-model="password" type="password" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</template>
+
+<script>
+export default {
+    data() {
+        return {
+            email: '',
+            password: ''
+        }
+    },
+    methods: {
+        login() {
+            this.$store.dispatch('login', {
+                email: this.email,
+                password: this.password
+            }).then(() => {
+                this.$router.push('/products');
+            }).catch(error => {
+                console.error('Invalid credentials', error);
+            });
+        }
+    }
+}
+</script>
+
+
+
+=> In src/components/Register.vue:
+
+
+
+<template>
+    <div>
+        <h1>Register</h1>
+        <form @submit.prevent="register">
+            <div>
+                <label>Name</label>
+                <input v-model="name" type="text" required>
+            </div>
+            <div>
+                <label>Email</label>
+                <input v-model="email" type="email" required>
+            </div>
+            <div>
+                <label>Password</label>
+                <input v-model="password" type="password" required>
+            </div>
+            <div>
+                <label>Confirm Password</label>
+                <input v-model="password_confirmation" type="password" required>
+            </div>
+            <button type="submit">Register</button>
+        </form>
+    </div>
+</template>
+
+<script>
+export default {
+    data() {
+        return {
+            name: '',
+            email: '',
+            password: '',
+            password_confirmation: ''
+        }
+    },
+    methods: {
+        register() {
+            this.$store.dispatch('register', {
+                name: this.name,
+                email: this.email,
+                password: this.password,
+                password_confirmation: this.password_confirmation
+            }).then(() => {
+                this.$router.push('/products');
+            }).catch(error => {
+                console.error('Registration error', error);
+            });
+        }
+    }
+}
+</script>
+
+
+=> In src/views/Products.vue:
+
+
+<template>
+    <div>
+        <ProductList @edit-product="editProduct"></ProductList>
+        <ProductForm :product="currentProduct" @form-submitted="clearForm"></ProductForm>
+    </div>
+</template>
+
+<script>
+import ProductList from '../components/ProductList.vue';
+import ProductForm from '../components/ProductForm.vue';
+
+export default {
+    components: {
+        ProductList,
+        ProductForm
+    },
+    data() {
+        return {
+            currentProduct: {}
+        }
+    },
+    methods: {
+        editProduct(product) {
+            this.currentProduct = { ...product };
+        },
+        clearForm() {
+            this.currentProduct = {};
+        }
+    }
+}
+</script>
+
+
+=> In src/views/Login.vue:
+
+
+<template>
+    <div>
+        <Login></Login>
+    </div>
+</template>
+
+<script>
+import Login from '../components/Login.vue';
+
+export default {
+    components: {
+        Login
+    }
+}
+</script>
+
+
+=> In src/views/Register.vue:
+
+
+<template>
+    <div>
+        <Register></Register>
+    </div>
+</template>
+
+<script>
+import Register from '../components/Register.vue';
+
+export default {
+    components: {
+        Register
+    }
+}
+</script>
+
+
+=> In src/views/Home.vue:
+
+
+<template>
+    <div>
+        <h1>Welcome to the Product App</h1>
+    </div>
+</template>
+
+
+
+/////////////////////////////////////////////////////////
+6. Main Application File
+/////////////////////////////////////////////////////////
+
+=> Update src/main.js:
+
+
+import Vue from 'vue';
+import App from './App.vue';
+import router from './router';
+import store from './store';
+
+Vue.config.productionTip = false;
+
+new Vue({
+    router,
+    store,
+    render: h => h(App),
+}).$mount('#app');
+
+
+=> Update src/App.vue to include navigation links:
+
+
+<template>
+    <div id="app">
+        <nav>
+            <router-link to="/">Home</router-link>
+            <router-link to="/products">Products</router-link>
+            <router-link v-if="!isLoggedIn" to="/login">Login</router-link>
+            <router-link v-if="!isLoggedIn" to="/register">Register</router-link>
+            <a v-if="isLoggedIn" href="#" @click.prevent="logout">Logout</a>
+        </nav>
+        <router-view></router-view>
+    </div>
+</template>
+
+<script>
+export default {
+    computed: {
+        isLoggedIn() {
+            return this.$store.getters.isLoggedIn;
+        }
+    },
+    methods: {
+        logout() {
+            this.$store.dispatch('logout').then(() => {
+                this.$router.push('/');
+            });
+        }
+    }
+}
+</script>
+
+///////////////////////////////////////////
+Testing Outputs
+////////////////////////////////////////////
+
+Register a new user: Navigate to the register page and create a new account.
+Login with the user: Navigate to the login page and login with the credentials.
+View Products: After logging in, navigate to the products page to view the list of products.
+Add a Product: Use the form to add a new product and see it appear in the list.
+Edit a Product: Click the edit button on a product, update the details, and see the changes.
+Delete a Product: Click the delete button on a product and see it removed from the list.
+By following these steps, you will have a fully functional Laravel API 
+with Passport authentication and a Vue.js frontend for managing products
+
+--------------------------------------------------------------------------

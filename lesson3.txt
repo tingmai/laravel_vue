@@ -1,0 +1,462 @@
+Laravel API with authentication using Passport 
+----------------------------------------------
+
+Step-by-Step Guide
+
+
+///////////////////////////////////////////////////////
+1. Install Laravel and Passport
+////////////////////////////////////////////////////////
+First, create a new Laravel project and install Passport:
+
+[command]:
+composer create-project --prefer-dist laravel/laravel product-api
+
+cd product-api
+
+[command]:
+composer require laravel/passport
+
+/////////////////////////////////////////////////////////////
+2. Configure Passport
+//////////////////////////////////////////////////////////////
+
+=> Run the Passport installation command:
+
+[command]:
+php artisan passport:install
+In your App\Models\User model, add the HasApiTokens trait:
+
+[code]:
+use Laravel\Passport\HasApiTokens;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, Notifiable;
+}
+
+
+
+=> In AuthServiceProvider, register the Passport routes within the boot method:
+
+[code]:
+use Laravel\Passport\Passport;
+
+public function boot()
+{
+    $this->registerPolicies();
+    Passport::routes();
+}
+
+--------------------------------------------------
+
+=> Update your config/auth.php to use Passport's token driver for API authentication:
+
+----------------------------------------------------
+'guards' => [
+    'api' => [
+        'driver' => 'passport',
+        'provider' => 'users',
+    ],
+],
+
+
+----------------------------------------------------
+////////////////////////////////////////////////////
+3. Migrate the Database
+///////////////////////////////////////////////////
+
+=> Configure your database in the .env file and run the migrations:
+
+[command]:
+php artisan migrate
+
+//////////////////////////////////////////////////////
+Step-4:  Create Authentication Controllers
+////////////////////////////////////////////////////////
+
+
+=> Generate the authentication controllers:
+
+[command]:
+php artisan make:controller Auth/RegisterController
+php artisan make:controller Auth/LoginController
+Implement the registration in RegisterController:
+
+
+[code]:
+namespace App\Http\Controllers\Auth;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+
+class RegisterController extends Controller
+{
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('Personal Access Token')->accessToken;
+
+        return response()->json(['token' => $token], 201);
+    }
+}
+
+
+
+=> Implement the login in LoginController:
+
+[code]:
+namespace App\Http\Controllers\Auth;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+
+class LoginController extends Controller
+{
+    public function login(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email',
+            'password' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        if (!Auth::attempt($request->only('email', 'password'))) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $user = $request->user();
+        $token = $user->createToken('Personal Access Token')->accessToken;
+
+        return response()->json(['token' => $token], 200);
+    }
+}
+
+/////////////////////////////////////////////////////////////////
+Step-5: Define Authentication Routes
+///////////////////////////////////////////////////////////////////
+
+
+In routes/api.php, add the routes for authentication:
+
+
+use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\LoginController;
+
+Route::post('register', [RegisterController::class, 'register']);
+Route::post('login', [LoginController::class, 'login']);
+
+
+///////////////////////////////////////////////////////////////
+6. Create Product CRUD API
+////////////////////////////////////////////////////////////////
+
+
+Generate the Product model, migration, and controller:
+
+
+[command]:
+php artisan make:model Product -m
+php artisan make:controller ProductController --api
+
+
+=> Modify the migration file database/migrations/xxxx_xx_xx_create_products_table.php:
+
+------------------------------------------------------
+public function up()
+{
+    Schema::create('products', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->text('description')->nullable();
+        $table->decimal('price', 8, 2);
+        $table->integer('quantity');
+        $table->timestamps();
+    });
+}
+
+------------------------------------------------------------
+
+=> Run the migration:
+
+
+[command]:
+php artisan migrate
+
+=> In routes/api.php, define the routes for the Product CRUD:
+
+[code]:
+use App\Http\Controllers\ProductController;
+
+Route::middleware('auth:api')->group(function () {
+    Route::apiResource('products', ProductController::class);
+});
+
+
+=> Implement the controller methods in app/Http/Controllers/ProductController.php:
+
+[code]:
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use Illuminate\Http\Request;
+
+class ProductController extends Controller
+{
+    public function index()
+    {
+        return Product::all();
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        return Product::create($request->all());
+    }
+
+    public function show($id)
+    {
+        return Product::findOrFail($id);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        $product = Product::findOrFail($id);
+        $product->update($request->all());
+
+        return $product;
+    }
+
+    public function destroy($id)
+    {
+        $product = Product::findOrFail($id);
+        $product->delete();
+
+        return response()->noContent();
+    }
+}
+
+////////////////////////////////////////////////////////
+Testing Outputs
+////////////////////////////////////////////////////////
+
+To test the API endpoints, use tools like Postman or Insomnia.
+Here are example requests and responses:
+
+////////////////////////////////////
+Registration
+//////////////////////////////////////
+
+
+=> Request:
+
+POST http://localhost:8000/api/register 
+Headers:
+"Content-Type: application/json"
+Body:
+'{"name":"John Doe","email":"john@example.com","password":"password","password_confirmation":"password"}'
+
+
+=> Response:
+
+
+{
+    "token": "your_personal_access_token"
+}
+
+-----------------------------------------
+/////////////////////////////////////////
+Login
+/////////////////////////////////////////
+
+
+=> Request:
+
+
+POST http://localhost:8000/api/login
+Headers:
+"Content-Type: application/json" 
+Body:
+{"email":"john@example.com","password":"password"}
+
+
+=> Response:
+
+
+{
+    "token": "your_personal_access_token"
+}
+
+///////////////////////////////////////////////////
+Get All Products
+////////////////////////////////////////////////////
+Request:
+
+
+GET http://localhost:8000/api/products
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+Response:
+
+
+[
+    {
+        "id": 1,
+        "name": "Product A",
+        "description": "Description for Product A",
+        "price": 10.99,
+        "quantity": 100,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    },
+    {
+        "id": 2,
+        "name": "Product B",
+        "description": "Description for Product B",
+        "price": 15.99,
+        "quantity": 200,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    }
+]
+
+////////////////////////////////////////////////////
+Create a Product
+////////////////////////////////////////////////////
+
+=> Request:
+
+
+POST http://localhost:8000/api/products
+Headers:
+"Authorization: Bearer your_personal_access_token" 
+"Content-Type: application/json" 
+Body:
+{"name":"Product C","description":"Description for Product C","price":20.99,"quantity":150}
+
+
+Response:
+
+-----------------------------------------------
+{
+    "id": 3,
+    "name": "Product C",
+    "description": "Description for Product C",
+    "price": 20.99,
+    "quantity": 150,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+
+------------------------------------------------
+
+//////////////////////////////////////////////////
+Get a Product by ID
+///////////////////////////////////////////////////
+
+=> Request:
+
+
+GET http://localhost:8000/api/products/1
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+=> Response:
+
+--------------------------------------------------
+{
+    "id": 1,
+    "name": "Product A",
+    "description": "Description for Product A",
+    "price": 10.99,
+    "quantity": 100,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+---------------------------------------------------
+
+///////////////////////////////////////////////////
+Update a Product
+//////////////////////////////////////////////////
+
+Request:
+
+
+PUT http://localhost:8000/api/products/1 
+
+Headers:
+"Authorization: Bearer your_personal_access_token"
+"Content-Type: application/json"
+Body:
+{"name":"Updated Product A","description":"Updated Description for Product A","price":11.99,"quantity":110}'
+
+=> Response:
+
+------------------------------------------------------
+{
+    "id": 1,
+    "name": "Updated Product A",
+    "description": "Updated Description for Product A",
+    "price": 11.99,
+    "quantity": 110,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+------------------------------------------------------
+
+////////////////////////////////////////////////////////
+Delete a Product
+////////////////////////////////////////////////////////
+
+=> Request:
+
+
+DELETE http://localhost:8000/api/products/1
+Headers:
+"Authorization: Bearer your_personal_access_token"
+
+=> Response:
+
+----------------------------------------------------------
+{
+    "message": "Product deleted successfully"
+}
+-----------------------------------------------------------

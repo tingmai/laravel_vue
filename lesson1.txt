@@ -1,0 +1,296 @@
+Laravel Product CRUD API 
+--------------------------
+
+Step-by-Step Guide
+
+//////////////////////////////////////////////
+Step-1: Install Laravel
+///////////////////////////////////////////////
+
+First, install a new Laravel project:
+
+[command]:
+composer create-project --prefer-dist laravel/laravel product-api
+cd product-api
+
+//////////////////////////////////////////////////
+Step-2: Configure Database
+/////////////////////////////////////////////////
+
+
+=> Set up your database in the .env file:
+
+-------------------------------------------------
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=your_database_name
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+------------------------------------------------
+
+///////////////////////////////////////////////////
+Step-3: Create Product Model and Migration
+///////////////////////////////////////////////////
+
+
+=> Generate the model and migration for the Product:
+
+[command]:
+php artisan make:model Product -m
+
+
+
+=> Modify the migration file database/migrations/xxxx_xx_xx_create_products_table.php:
+
+[code]:
+public function up()
+{
+    Schema::create('products', function (Blueprint $table) {
+        $table->id();
+        $table->string('name');
+        $table->text('description')->nullable();
+        $table->decimal('price', 8, 2);
+        $table->integer('quantity');
+        $table->timestamps();
+    });
+}
+
+
+=> Run the migration:
+
+[command]:
+php artisan migrate
+
+///////////////////////////////////////////////////
+Step-4: Define API Routes
+///////////////////////////////////////////////////
+
+
+=> In routes/api.php, define the routes for the Product CRUD:
+
+[code]:
+use App\Http\Controllers\ProductController;
+
+Route::apiResource('products', ProductController::class);
+
+////////////////////////////////////////////////////////////
+Step-5: Create Product Controller
+////////////////////////////////////////////////////////////
+
+=> Generate a controller:
+
+[command]:
+php artisan make:controller ProductController --api
+Implement the controller methods in app/Http/Controllers/ProductController.php:
+
+[code]:
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use Illuminate\Http\Request;
+
+class ProductController extends Controller
+{
+    public function index()
+    {
+        return Product::all();
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        return Product::create($request->all());
+    }
+
+    public function show($id)
+    {
+        return Product::findOrFail($id);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'required|numeric',
+            'quantity' => 'required|integer',
+        ]);
+
+        $product = Product::findOrFail($id);
+        $product->update($request->all());
+
+        return $product;
+    }
+
+    public function destroy($id)
+    {
+        $product = Product::findOrFail($id);
+        $product->delete();
+
+        return response()->noContent();
+    }
+}
+
+=====================================================================
+
+---------------
+Testing Outputs
+---------------
+
+=> To test the API endpoints, you can use tools like Postman or Insomenia;
+
+///////////////////////////////////////////
+Test-1: Testing GET /api/products
+//////////////////////////////////////////
+
+
+=> Make a GET request to /api/products:
+
+
+Request: GET http://localhost:8000/api/products
+
+Response:
+
+----------------------------------------------------
+[
+    {
+        "id": 1,
+        "name": "Product A",
+        "description": "Description for Product A",
+        "price": 10.99,
+        "quantity": 100,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    },
+    {
+        "id": 2,
+        "name": "Product B",
+        "description": "Description for Product B",
+        "price": 15.99,
+        "quantity": 200,
+        "created_at": "2024-06-07T12:00:00.000000Z",
+        "updated_at": "2024-06-07T12:00:00.000000Z"
+    }
+]
+------------------------------------------------------
+
+////////////////////////////////////////////////////////
+Test-2: Testing POST /api/products
+////////////////////////////////////////////////////////
+
+=> Make a POST request to /api/products with the following JSON body:
+
+-----------------------------------------------------
+{
+    "name": "Product C",
+    "description": "Description for Product C",
+    "price": 20.99,
+    "quantity": 150
+}
+-----------------------------------------------------
+
+ Test-3: POST http://localhost:8000/api/products 
+
+    Headers:
+    Content-Type: application/json"
+
+    Body:
+    {"name":"Product C","description":"Description for Product C","price":20.99,"quantity":150}
+
+
+Response:
+
+-------------------------------------------------------
+{
+    "id": 3,
+    "name": "Product C",
+    "description": "Description for Product C",
+    "price": 20.99,
+    "quantity": 150,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+-------------------------------------------------------
+
+//////////////////////////////////////////////////
+Test-4: GET /api/products/{id}
+//////////////////////////////////////////////////
+
+
+=> GET http://localhost:8000/api/products/1
+
+
+Response:
+
+------------------------------------------------------
+{
+    "id": 1,
+    "name": "Product A",
+    "description": "Description for Product A",
+    "price": 10.99,
+    "quantity": 100,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+-----------------------------------------------------
+
+
+//////////////////////////////////////////////////
+Step-4: Testing PUT /api/products/{id}
+/////////////////////////////////////////////////
+
+=> PUT request to /api/products/1 with the following JSON body:
+
+------------------------------------------------
+{
+    "name": "Updated Product A",
+    "description": "Updated Description for Product A",
+    "price": 11.99,
+    "quantity": 110
+}
+--------------------------------------------------
+
+ PUT http://localhost:8000/api/products/1 
+ Headers:
+"Content-Type: application/json"
+ Body:
+
+{"name":"Updated Product A","description":"Updated Description for Product A","price":11.99,"quantity":110}'
+
+
+Response:
+
+json
+Copy code
+{
+    "id": 1,
+    "name": "Updated Product A",
+    "description": "Updated Description for Product A",
+    "price": 11.99,
+    "quantity": 110,
+    "created_at": "2024-06-07T12:00:00.000000Z",
+    "updated_at": "2024-06-07T12:00:00.000000Z"
+}
+
+
+////////////////////////////////////////////////////////
+Step-5: Testing DELETE /api/products/{id}
+////////////////////////////////////////////////////////
+
+
+DELETE http://localhost:8000/api/products/1
+
+Response:
+
+-----------------------------------------------------------
+{
+    "message": "Product deleted successfully"
+}
+-------------------------------------------------------------
